@@ -1,7 +1,9 @@
-from os import path
+from os import path, makedirs
 from datetime import datetime as dt
 import json
 from functools import partial
+from io import BytesIO
+from glob import glob
 from PIL import Image
 import numpy as np
 import matplotlib
@@ -11,7 +13,6 @@ from transformers import SegformerFeatureExtractor, SegformerForSemanticSegmenta
 from torch import nn
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
 
 matplotlib.use('Agg')
 
@@ -38,14 +39,18 @@ def predict(feature_extractor, model, image):
 
 plt.ioff()
 
-def visualize(labels, image, prediction):
-    classes, palette = labels['classes'], labels['palette']
+def get_mask_and_overlayed_images(palette, image, prediction):
     color_map = {i : k for i, k in enumerate(palette)}
     vis = np.zeros(prediction.shape + (3,))
     for i, c in color_map.items():
         vis[prediction == i] = color_map[i]
     mask = Image.fromarray(vis.astype(np.uint8))
-    overlayed_img = Image.blend(image.convert("RGB"), mask.convert("RGB"), 0.5)
+    overlayed = Image.blend(image.convert("RGB"), mask.convert("RGB"), 0.5)
+    return mask, overlayed
+
+def visualize(labels, image, prediction):
+    classes, palette = labels['classes'], labels['palette']
+    mask, overlayed = get_mask_and_overlayed_images(palette, image, prediction)
 
     hist, bins = np.histogram(prediction, range(0, len(classes)))
     histbins = sorted([(h, b)for h, b in zip(hist, bins)], reverse=True)
@@ -59,11 +64,16 @@ def visualize(labels, image, prediction):
     ax01 = fig.add_subplot(spec[0, 1])
     ax0 = fig.add_subplot(spec[1, :])
     ax00.imshow(mask)
-    ax01.imshow(overlayed_img)
+    ax01.imshow(overlayed)
     ax0.bar(kinds, ratios, color=colors)
     return fig
 
 # ---
+
+makedirs('_analyzed/src_image', exist_ok=True)
+makedirs('_analyzed/image', exist_ok=True)
+makedirs('_analyzed/json', exist_ok=True)
+makedirs('_analyzed/graph', exist_ok=True)
 
 app = Flask(__name__)
 CORS(app)
@@ -74,29 +84,9 @@ def root():
 
 cc_predict = partial(predict, *setup("nvidia/segformer-b5-finetuned-cityscapes-1024-1024"))
 cc_labels = json.load(open('cityscapes_labels.json'))
-cc_visualize = partial(visualize, cc_labels)
 
-# @app.route('/analyse/cityscape/<path:path>')
-def cc_analyze(url):
-    image = Image.open(url).convert('RGB')
-    prediction = cc_predict(image)
-    hist, bins = np.histogram(prediction, range(len(cc_labels['classes'])))
-    hist = (hist * 100 / (image.size[0] * image.size[1])).astype(np.int32)
-    fig = cc_visualize(image, prediction)
-    # body = get_body(url)
-    # json.dump(hist.tolist(), open(f'_segmented/{body}.json', 'w'))
-    # fig.savefig(f'_uploaded/{body}.png')
-    basename = f'{dt.now().strftime("%Y%m%d_%H%M%S")}.png'
-    fig.savefig(f'_tmp/{basename}')
-    return {
-        'histogram': hist.tolist(),
-        'graph': basename
-    }
-
-from io import BytesIO
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
+@app.route('/analyze', methods=['POST'])
+def analyze():
     if 'file' not in request.files:
         return 'No file part'
     file = request.files['file']
@@ -105,13 +95,44 @@ def upload_file():
 
     f = BytesIO()
     file.save(f)
-    result = cc_analyze(f)
-    return f'{json.dumps(result)}'
+    image = Image.open(f).convert('RGB')
+    prediction = cc_predict(image)
+    mask, overlayed = get_mask_and_overlayed_images(cc_labels['palette'], image, prediction)
+    hist, bins = np.histogram(prediction, range(len(cc_labels['classes'])))
+    # hist = (hist * 100 / (image.size[0] * image.size[1])).astype(np.int32)
+    
+    name = dt.now().strftime("%Y%m%d_%H%M%S")
+    image.save(f'_analyzed/src_image/{name}.png')
+    overlayed.save(f'_analyzed/image/{name}.png')
+    result = dict(request.form) | {
+        'name': name,
+        "width": image.width,
+        "height": image.height,
+        'histogram': hist.astype(np.int32).tolist()
+    }
+    json.dump(result, open(f'_analyzed/json/{name}.json', 'w'))
+    graph = visualize(cc_labels, image, prediction)
+    graph.savefig(f'_analyzed/graph/{name}.png')
+    return result
 
-@app.route('/graph/<path:filename>')
-def static_file(filename):
-    print(filename)
-    return send_from_directory('_tmp', filename)
+@app.route('/analyzed/image/<path:filename>')
+def get_analyzed_image(filename):
+    return send_from_directory('_analyzed/image', filename)
 
-# app.run(debug=True)
-# flask run --debug
+@app.route('/analyzed/json/<path:filename>')
+def get_analyzed_json(filename):
+    return send_from_directory('_analyzed/json', filename)
+
+@app.route('/analyzed/graph/<path:filename>')
+def get_analyzed_graph(filename):
+    return send_from_directory('_analyzed/graph', filename)
+
+@app.route('/analyzed/whole-json')
+def get_whole_json():
+    whole_json = []
+    for f in glob('_analyzed/json/*.json'):
+        whole_json.append(json.load(open(f)))
+    return whole_json
+
+if __name__ == ('__main__'):
+    app.run(debug=True, host='0.0.0.0')
