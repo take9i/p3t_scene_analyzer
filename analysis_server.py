@@ -1,3 +1,4 @@
+# pylint: disable=missing-docstring
 from os import path, makedirs
 from datetime import datetime as dt
 import json
@@ -8,7 +9,6 @@ from PIL import Image
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from PIL import Image
 from transformers import SegformerFeatureExtractor, SegformerForSemanticSegmentation
 from torch import nn
 from flask import Flask, request, send_from_directory
