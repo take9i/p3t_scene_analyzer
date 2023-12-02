@@ -2,6 +2,7 @@
 from os import path
 from glob import glob
 import json
+import base64
 
 import streamlit as st
 import folium
@@ -49,7 +50,11 @@ fg = folium.FeatureGroup(name="Pika")
 # for n, row in adf[["geometry", "name", "height"]].iterrows():
 for js in jsons:
     lat, lon, name = js["lat"], js["lon"], js["name"]
-    html = f'<img src="{BASE_DIR}/{scene}/overlayed_images/{name}.png" width="400" />'
+    with open(f"{BASE_DIR}/{scene}/overlayed_images/{js['name']}.png", "rb") as f:
+        data = f.read()
+    img_str = base64.b64encode(data).decode()
+    # html = f'<img src="./{BASE_DIR}/{scene}/overlayed_images/{name}.png" width="400" />'
+    html = f'<img src="data:image/png;base64,{img_str}" width="400" />'
     marker = folium.Marker(location=(lat, lon), popup=html, tooltip=js["name"])
     fg.add_child(marker)
 m.add_child(fg)
