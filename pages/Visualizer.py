@@ -28,24 +28,24 @@ jsons = [
     for f in glob(f"{BASE_DIR}/{scene}/jsons/*.json")
 ]
 
-h_min, h_max = st.sidebar.slider("Height", 800, 1500, (800, 1500))
 p_min, p_max = st.sidebar.slider("Pitch", -90, 10, (-90, 0))
+r_min, r_max = st.sidebar.slider("Range", 1, 500, (1, 500))
 
 jsons = sorted(
     [
         js
         for js in jsons
-        if js["height"] >= h_min
-        and js["height"] < h_max
-        and js["pitch"] >= p_min
+        if js["pitch"] >= p_min
         and js["pitch"] < p_max
+        and js["range"] >= r_min
+        and js["range"] < r_max
     ],
     key=lambda js: js["name"],
 )
 
 names = [js["name"] for js in jsons]
-
-m = folium.Map(location=[jsons[0]["lat"], jsons[0]["lon"]], zoom_start=14)
+loca = [jsons[0]["lat"], jsons[0]["lon"]] if len(jsons) else [35.6895, 139.6917]
+m = folium.Map(location=loca, zoom_start=14)
 fg = folium.FeatureGroup(name="Pika")
 # for n, row in adf[["geometry", "name", "height"]].iterrows():
 for js in jsons:

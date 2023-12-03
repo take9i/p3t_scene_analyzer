@@ -27,6 +27,7 @@ from torch import nn
 
 CHROME_DRIVER_PATH = (
     r"/Users/suika/Projects/GPTxGIS/codes/capturer/chromedriver-mac-arm64/chromedriver"
+    # r"C:\Users\t_osada23053\Documents\gpt\p3t_scene_analyzer\chromedriver-win64\chromedriver.exe"
 )
 BASE_DIR = "_route_analyzed"
 
@@ -96,7 +97,7 @@ def get_mask_and_overlayed_images(palette, image, prediction):
     return mask, overlayed
 
 
-@st.cache_data
+@st.cache_resource
 def setup_analyzer(model, label):
     feature_extractor = SegformerFeatureExtractor.from_pretrained(model)
     model = SegformerForSemanticSegmentation.from_pretrained(model)
